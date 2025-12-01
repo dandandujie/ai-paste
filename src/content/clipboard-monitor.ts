@@ -1,6 +1,9 @@
+const STORAGE_KEY = 'ai_paste_last_clipboard';
+
 /**
  * 剪贴板监控器
  * 当页面处于前台且剪贴板有新内容时触发回调
+ * 使用 chrome.storage.local 跨页面共享已处理的剪贴板内容
  */
 export class ClipboardMonitor {
   private pollInterval = 1500;
@@ -8,14 +11,19 @@ export class ClipboardMonitor {
   private lastClipboardText = '';
   private onNewContent: (text: string) => void;
   private isRunning = false;
+  private initialized = false;
 
   constructor(onNewContent: (text: string) => void) {
     this.onNewContent = onNewContent;
   }
 
-  start() {
+  async start() {
     if (this.isRunning) return;
     this.isRunning = true;
+
+    // 从 storage 加载上次处理过的剪贴板内容
+    await this.loadLastClipboard();
+    this.initialized = true;
 
     document.addEventListener('visibilitychange', this.handleVisibilityChange);
     window.addEventListener('focus', this.handleFocus);
@@ -24,6 +32,25 @@ export class ClipboardMonitor {
 
     this.refreshMonitoring();
     console.log('[AI-Paste] Clipboard monitor started');
+  }
+
+  private async loadLastClipboard() {
+    try {
+      const result = await chrome.storage.local.get(STORAGE_KEY);
+      if (result[STORAGE_KEY]) {
+        this.lastClipboardText = result[STORAGE_KEY];
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  private async saveLastClipboard(text: string) {
+    try {
+      await chrome.storage.local.set({ [STORAGE_KEY]: text });
+    } catch {
+      // ignore
+    }
   }
 
   stop() {
@@ -58,6 +85,7 @@ export class ClipboardMonitor {
     const copied = event.clipboardData?.getData('text/plain');
     if (copied && copied.trim()) {
       this.lastClipboardText = copied;
+      this.saveLastClipboard(copied);
       this.onNewContent(copied);
     }
   };
@@ -89,10 +117,12 @@ export class ClipboardMonitor {
   }
 
   private async checkClipboard() {
+    if (!this.initialized) return;
     try {
       const text = await navigator.clipboard.readText();
       if (text && text.trim() && text !== this.lastClipboardText) {
         this.lastClipboardText = text;
+        this.saveLastClipboard(text);
         this.onNewContent(text);
       }
     } catch {

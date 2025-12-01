@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "AI-Paste",
+  "description": "Copy AI chat content with proper formatting for Word/Excel/WPS",
+  "version": "1.0.0",
+  "icons": {
+    "16": "icons/icon16.svg",
+    "48": "icons/icon48.svg",
+    "128": "icons/icon128.svg"
+  },
+  "permissions": [
+    "activeTab",
+    "storage",
+    "clipboardRead",
+    "clipboardWrite",
+    "offscreen",
+    "contextMenus",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
+    "default_icon": {
+      "16": "icons/icon16.svg",
+      "48": "icons/icon48.svg"
+    }
+  },
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*/*", "http://*/*"],
+      "js": ["content/content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["vendor/katex/*", "vendor/katex/fonts/*", "assets/*"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

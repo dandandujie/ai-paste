@@ -1,87 +1,67 @@
-# AI-Paste
+# AI-Paste（爱粘贴）
 
-A browser extension that enables copying AI chat content with proper formatting for Word, Excel, and WPS.
+[English](./README_EN.md)
 
-## Features
+一款浏览器扩展，让 AI 对话内容可以完美粘贴到 Word、Excel、WPS 等办公软件中。
 
-- **Rich Text Formatting**: Preserves headings, lists, tables, code blocks, and other formatting when pasting into office applications
-- **Math Formula Support**: Converts LaTeX formulas to Office-compatible format (OMML), enabling direct paste into Word/WPS with editable equations
-- **Multi-Platform Support**: Works with popular AI assistants:
-  - ChatGPT
-  - Claude
-  - Gemini
-  - Kimi
-  - DeepSeek
-  - Doubao (豆包)
-  - Tongyi Qianwen (通义千问)
-  - ChatGLM (智谱清言)
-  - Grok
+## 项目背景
 
-## Installation
+作为一名日常使用 AI 工具的大学生，我经常遇到这样的困扰：直接复制 AI 输出的内容粘贴到 Word 时，格式混乱、公式无法渲染。于是萌生了开发这款工具的想法。
 
-### From Source
+选择浏览器扩展而非桌面程序，是因为主流浏览器都支持 Chrome 扩展，可以避免 Windows、macOS 等跨平台适配问题。
 
-1. Clone this repository:
-   ```bash
-   git clone https://github.com/dandandujie/ai-paste.git
-   cd ai-paste
-   ```
+项目名 **AI-Paste**，谐音"爱粘贴"，也代表了它在 AI 场景下的使用定位。
 
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
+## 功能特性
 
-3. Build the extension:
-   ```bash
-   npm run build
-   ```
+- **富文本格式保留**：标题、列表、表格、代码块等格式完整保留
+- **数学公式支持**：LaTeX 公式自动转换为 Office 兼容格式（OMML），粘贴到 Word/WPS 后可直接编辑
+- **广泛兼容**：适配主流 AI 对话平台
 
-4. Load the extension in Chrome:
-   - Open `chrome://extensions/`
-   - Enable "Developer mode"
-   - Click "Load unpacked"
-   - Select the `dist` folder
+## 安装使用
 
-## Usage
+### 方式一：直接下载（推荐）
 
-1. Navigate to any supported AI chat platform
-2. Select the content you want to copy
-3. Use the copy button or Ctrl+C / Cmd+C
-4. Paste directly into Word, Excel, or WPS
+1. 前往 [Releases](https://github.com/dandandujie/ai-paste/releases) 页面下载最新版本的 `dist.zip`
+2. 解压到任意文件夹
+3. 打开 Chrome 浏览器，访问 `chrome://extensions/`
+4. 开启右上角「开发者模式」
+5. 点击「加载已解压的扩展程序」，选择解压后的文件夹
 
-The extension automatically converts the content to a format that preserves:
-- Text formatting (bold, italic, headings)
-- Code blocks with syntax highlighting
-- Tables
-- Mathematical formulas (as editable equations)
-- Lists and nested structures
-
-## Development
+### 方式二：从源码构建
 
 ```bash
-# Install dependencies
+git clone https://github.com/dandandujie/ai-paste.git
+cd ai-paste
 npm install
-
-# Build for production
 npm run build
-
-# Build main bundle only
-npm run build:main
-
-# Build content script only
-npm run build:content
 ```
 
-## Tech Stack
+构建完成后，按上述步骤加载 `dist` 文件夹即可。
+
+## 使用方法
+
+1. 打开任意 AI 对话网站
+2. 选中需要复制的内容
+3. 使用 **Ctrl+C / Cmd+C** 复制（推荐，网页自带的复制按钮可能无法触发扩展）
+4. 直接粘贴到 Word、Excel 或 WPS
+
+扩展会自动处理内容格式，包括：
+- 文本样式（加粗、斜体、标题）
+- 代码块（带语法高亮）
+- 表格
+- 数学公式（转换为可编辑公式）
+- 列表及嵌套结构
+
+## 技术栈
 
 - TypeScript
 - Vite
 - Chrome Extension Manifest V3
-- KaTeX (for math rendering)
-- Marked (for Markdown parsing)
-- Highlight.js (for code highlighting)
+- KaTeX
+- Marked
+- Highlight.js
 
-## License
+## 开源协议
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+本项目采用 [Apache License 2.0](LICENSE) 开源协议。
