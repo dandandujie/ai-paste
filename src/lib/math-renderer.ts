@@ -1,13 +1,14 @@
 /**
  * Math formula renderer
- * Uses KaTeX for preview (HTML) and MathML for Word clipboard
- * Word 2013+ natively supports MathML
+ * Uses KaTeX for preview (HTML) and OMML for Word clipboard
+ * OMML (Office Math Markup Language) is natively supported by Word on all platforms
  */
 import katex from 'katex';
+import { mml2omml } from 'mathml2omml';
 
 export interface MathRenderResult {
   html: string;
-  mathml: string;
+  mathml: string;  // Actually OMML for Word compatibility
 }
 
 /**
@@ -35,16 +36,18 @@ export function renderLatex(latex: string, displayMode: boolean = false): MathRe
     html = `<span class="math-error">${escapeHtml(latex)}</span>`;
   }
 
-  // MathML for Word - Word 2013+ natively supports MathML
+  // OMML for Word - convert MathML to OMML for better Windows Word compatibility
   try {
-    mathml = katex.renderToString(latex, {
+    const mml = katex.renderToString(latex, {
       displayMode,
       throwOnError: false,
       output: 'mathml',
       strict: false
     });
+    // Convert MathML to OMML (Office Math Markup Language)
+    mathml = mml2omml(mml);
   } catch (error) {
-    console.error('[AI-Paste] MathML render error:', error);
+    console.error('[AI-Paste] OMML render error:', error);
     // Fallback: wrap LaTeX in basic MathML
     mathml = `<math xmlns="http://www.w3.org/1998/Math/MathML"><mtext>${escapeHtml(latex)}</mtext></math>`;
   }

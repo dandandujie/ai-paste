@@ -640,18 +640,6 @@ export class FloatingPanel {
     return tempDiv.innerHTML;
   }
 
-  /**
-   * 检测内容是否为 HTML（包含已渲染的数学公式）
-   */
-  private isHtmlContent(content: string): boolean {
-    // 检查是否包含 HTML 标签
-    if (!/<[a-z][\s\S]*>/i.test(content)) {
-      return false;
-    }
-    // 检查是否包含已渲染的数学公式标记或 KaTeX/MathJax 元素
-    return this.containsMathElements(content);
-  }
-
   private async updatePreview() {
     if (!this.shadowRoot || !this.currentPreset) return;
 
@@ -663,18 +651,10 @@ export class FloatingPanel {
     if (!previewArea) return;
 
     try {
-      let previewHtml: string;
-
-      if (this.isHtmlContent(this.currentContent)) {
-        // 内容已经是 HTML（包含已渲染的公式），直接使用
-        // 移除注释标记，保留公式 HTML
-        previewHtml = this.currentContent
-          .replace(/<!--RENDERED_MATH_START-->/g, '')
-          .replace(/<!--RENDERED_MATH_END-->/g, '');
-      } else {
-        // 内容是 Markdown，需要转换
-        previewHtml = await convertMarkdown(this.currentContent, false);
-      }
+      // 统一使用 convertMarkdown 处理，它会：
+      // 1. 保护已渲染的公式（<!--RENDERED_MATH_START-->...<!--RENDERED_MATH_END-->）
+      // 2. 渲染未处理的 LaTeX 文本（$...$, \(...\) 等）
+      const previewHtml = await convertMarkdown(this.currentContent, false);
 
       previewArea.innerHTML = previewHtml;
       previewArea.style.fontFamily = fontFamily;
@@ -695,16 +675,8 @@ export class FloatingPanel {
     const lineHeight = (this.shadowRoot.querySelector('#lineHeight') as HTMLSelectElement)?.value;
 
     try {
-      let finalHtml: string;
-
-      if (this.isHtmlContent(this.currentContent)) {
-        // 内容是 HTML（包含已渲染的公式），使用 convertHtmlForClipboard 转换
-        const { convertHtmlForClipboard } = await import('@/lib/markdown-converter');
-        finalHtml = convertHtmlForClipboard(this.currentContent);
-      } else {
-        // 内容是 Markdown，使用 convertMarkdown 转换
-        finalHtml = await convertMarkdown(this.currentContent, true);
-      }
+      // 统一使用 convertMarkdown 处理，forClipboard=true 会输出 MathML 格式
+      let finalHtml = await convertMarkdown(this.currentContent, true);
 
       // 应用用户选择的格式
       finalHtml = `<div style="font-family: ${fontFamily}; font-size: ${fontSize}; line-height: ${lineHeight};">${finalHtml}</div>`;

@@ -1,6 +1,7 @@
 import { marked } from 'marked';
 import hljs from 'highlight.js';
 import { processLatexInText, renderLatex } from './math-renderer';
+import { mml2omml } from 'mathml2omml';
 
 marked.setOptions({
   gfm: true,
@@ -294,7 +295,7 @@ export function extractPlainText(markdown: string): string {
 /**
  * 将网页上已渲染的公式转换为目标格式
  * - 预览：保留原始 HTML，便于显示
- * - 剪贴板：提取 LaTeX 后转为 MathML，Word 2013+ 原生支持
+ * - 剪贴板：提取 LaTeX 后转为 OMML，Windows/Mac Word 原生支持
  */
 function convertPreservedMath(mathHtml: string, forClipboard: boolean): string {
   if (!forClipboard) {
@@ -304,28 +305,29 @@ function convertPreservedMath(mathHtml: string, forClipboard: boolean): string {
   const { latex, displayMode, mathml: existingMathml } = extractLatexFromMathHtml(mathHtml);
 
   try {
-    // 优先使用已有的 MathML（如 KaTeX 生成的）
+    // 优先使用已有的 MathML，转换为 OMML
     if (existingMathml) {
-      return existingMathml;
+      return mml2omml(existingMathml);
     }
 
     if (latex) {
       const { mathml } = renderLatex(latex, displayMode);
-      return mathml;
+      return mathml;  // renderLatex 已经返回 OMML
     }
 
     // 找不到 LaTeX 时，尽量提取可读文本
     const plain = extractMathPlainText(mathHtml);
     if (plain) {
       const { mathml } = renderLatex(plain, displayMode);
-      return mathml;
+      return mathml;  // renderLatex 已经返回 OMML
     }
 
-    // 最后兜底：直接用纯文本包装为 MathML
+    // 最后兜底：直接用纯文本包装为 OMML
     const fallbackText = sanitizeText(mathHtml);
-    return `<math xmlns="http://www.w3.org/1998/Math/MathML"><mtext>${fallbackText || '公式'}</mtext></math>`;
+    const fallbackMml = `<math xmlns="http://www.w3.org/1998/Math/MathML"><mtext>${fallbackText || '公式'}</mtext></math>`;
+    return mml2omml(fallbackMml);
   } catch (error) {
-    console.error('[AI-Paste] 保留公式转 MathML 失败:', error);
+    console.error('[AI-Paste] 保留公式转 OMML 失败:', error);
     return `<span class="preserved-math">${mathHtml}</span>`;
   }
 }
