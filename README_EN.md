@@ -43,8 +43,7 @@ After building, load the `dist` folder following the steps above.
 
 1. Open any AI chat website
 2. Select the content you want to copy
-3. Use **Ctrl+C / Cmd+C** to copy (recommended, as the website's built-in copy button may not trigger the extension)
-4. Paste directly into Word, Excel, or WPS
+3. Paste directly into Word, Excel, or WPS
 
 The extension automatically handles content formatting, including:
 - Text styles (bold, italic, headings)
