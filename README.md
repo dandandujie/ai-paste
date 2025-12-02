@@ -2,7 +2,7 @@
 
 [English](./README_EN.md)
 
-一款浏览器扩展，让 AI 对话内容可以完美粘贴到 Word、Excel、WPS 等办公软件中。
+一款浏览器扩展，让 AI 对话内容可以完美粘贴到 Word、WPS中。
 
 ## 项目背景
 
