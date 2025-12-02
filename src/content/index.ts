@@ -1,12 +1,16 @@
 import { ClipboardInterceptor } from './clipboard-interceptor';
 import { getFloatingPanel } from './floating-panel';
 import { ClipboardMonitor } from './clipboard-monitor';
+import { getSettings } from '@/utils/storage';
 
 const interceptor = new ClipboardInterceptor();
 interceptor.init();
 
 // 剪贴板监控：当页面处于前台且有新内容时自动弹出浮窗
-const monitor = new ClipboardMonitor((text) => {
+const monitor = new ClipboardMonitor(async (text) => {
+  const settings = await getSettings();
+  if (!settings.enabled || !settings.showFloatingPanel) return;
+
   const panel = getFloatingPanel();
   panel.show(text, async (html, plainText) => {
     try {

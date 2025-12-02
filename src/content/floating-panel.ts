@@ -4,7 +4,7 @@
  */
 import { convertMarkdown } from '@/lib/markdown-converter';
 import { buildClipboardItem } from '@/lib/math-clipboard';
-import { getCurrentPreset, getSettings } from '@/utils/storage';
+import { getCurrentPreset, getSettings, saveSettings } from '@/utils/storage';
 import type { StylePreset } from '@/types';
 
 export class FloatingPanel {
@@ -176,8 +176,17 @@ export class FloatingPanel {
           </div>
         </div>
         <div class="panel-footer">
-          <button class="btn btn-secondary" id="btnReset">重置格式</button>
-          <button class="btn btn-primary" id="btnCopy">复制格式化内容</button>
+          <div class="footer-row">
+            <button class="btn btn-secondary" id="btnReset">重置格式</button>
+            <button class="btn btn-primary" id="btnCopy">复制格式化内容</button>
+          </div>
+          <div class="auto-popup-toggle">
+            <label class="toggle-label">
+              <input type="checkbox" id="autoPopupToggle" checked>
+              <span class="toggle-slider"></span>
+              <span class="toggle-text">启用浮窗</span>
+            </label>
+          </div>
         </div>
         <div class="resize-handle" id="resizeHandle"></div>
       </div>
@@ -246,6 +255,9 @@ export class FloatingPanel {
 
     // 调整大小
     this.setupResize(resizeHandle);
+
+    // 自动弹出开关
+    this.setupAutoPopupToggle();
   }
 
   /**
@@ -339,6 +351,25 @@ export class FloatingPanel {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
     };
+  }
+
+  private async setupAutoPopupToggle() {
+    if (!this.shadowRoot) return;
+
+    const toggle = this.shadowRoot.querySelector('#autoPopupToggle') as HTMLInputElement;
+    if (!toggle) return;
+
+    // 初始化开关状态
+    const settings = await getSettings();
+    toggle.checked = settings.showFloatingPanel;
+
+    // 监听开关变化
+    toggle.addEventListener('change', async () => {
+      const settings = await getSettings();
+      settings.showFloatingPanel = toggle.checked;
+      await saveSettings(settings);
+      this.showToast(toggle.checked ? '浮窗已启用' : '浮窗已关闭', 'success');
+    });
   }
 
   private checkSelection() {
@@ -960,10 +991,16 @@ export class FloatingPanel {
 
       .panel-footer {
         display: flex;
+        flex-direction: column;
         gap: 10px;
         padding: 12px 16px;
         border-top: 1px solid #eee;
         background: #fafafa;
+      }
+
+      .footer-row {
+        display: flex;
+        gap: 10px;
       }
 
       .btn {
@@ -1079,6 +1116,61 @@ export class FloatingPanel {
 
       .selection-toolbar {
         flex-wrap: wrap;
+      }
+
+      /* 自动弹出开关 */
+      .auto-popup-toggle {
+        display: flex;
+        justify-content: center;
+        padding-top: 4px;
+        border-top: 1px dashed #e5e7eb;
+      }
+
+      .toggle-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .toggle-label input {
+        display: none;
+      }
+
+      .toggle-slider {
+        position: relative;
+        width: 36px;
+        height: 20px;
+        background: #d1d5db;
+        border-radius: 10px;
+        transition: background 0.2s;
+      }
+
+      .toggle-slider::after {
+        content: '';
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 16px;
+        height: 16px;
+        background: white;
+        border-radius: 50%;
+        transition: transform 0.2s;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+      }
+
+      .toggle-label input:checked + .toggle-slider {
+        background: #4f46e5;
+      }
+
+      .toggle-label input:checked + .toggle-slider::after {
+        transform: translateX(16px);
+      }
+
+      .toggle-text {
+        font-size: 12px;
+        color: #6b7280;
       }
     `;
   }
