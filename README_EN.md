@@ -2,7 +2,7 @@
 
 [中文](./README.md)
 
-A browser extension that enables seamless pasting of AI chat content into Word, Excel, WPS and other office applications.
+A browser extension that enables seamless pasting of AI chat content into Wordl and WPS .
 
 ## Background
 
