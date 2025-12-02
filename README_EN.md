@@ -15,24 +15,8 @@ The name **AI-Paste** reflects its purpose in AI-assisted workflows.
 ## Features
 
 - **Rich Text Preservation**: Headings, lists, tables, code blocks and other formatting are fully preserved
-- **Math Formula Support**: LaTeX formulas are automatically converted to Office-compatible format, allowing direct editing in Word
-- **Multi-Select Marking**: Select and mark multiple text sections to apply different fonts and sizes
-- **Resizable Panel**: Drag the bottom-left corner to resize the floating panel
+- **Math Formula Support**: LaTeX formulas are automatically converted to Office-compatible format (OMML), allowing direct editing in Word/WPS
 - **Wide Compatibility**: Works with mainstream AI chat platforms
-
-## Important Notes
-
-> ⚠️ **Microsoft Word Recommended**
->
-> This extension is optimized for **Microsoft Word**. Formulas render perfectly as editable equations.
->
-> **WPS Users**: WPS (especially Mac version) has limited formula format support. You may experience formula display issues or formatting problems. If you encounter issues, switch "Target App" to "WPS" mode in the floating panel.
-
-> ⚠️ **Use Keyboard Shortcuts to Copy**
->
-> Please use **Ctrl+C (Windows)** or **Cmd+C (Mac)** to copy content manually.
->
-> The built-in "Copy" button on AI websites may not trigger this extension, resulting in lost formatting.
 
 ## Installation
 
@@ -59,17 +43,15 @@ After building, load the `dist` folder following the steps above.
 
 1. Open any AI chat website
 2. Select the content you want to copy
-3. Use **Ctrl+C / Cmd+C** to copy (recommended for best results)
-4. Adjust font, size, and other settings in the floating panel
-5. Click "Copy Formatted Content"
-6. Paste into Word or WPS
+3. Use **Ctrl+C / Cmd+C** to copy (recommended, as the website's built-in copy button may not trigger the extension)
+4. Paste directly into Word, Excel, or WPS
 
-### Format Settings
-
-- **Target App**: Choose Word or WPS (WPS mode converts formulas to text format)
-- **Font/Size/Line Height**: Set global formatting
-- **Multi-Select Marking**: Select text and click "+Mark" to mark multiple sections, then apply formatting to all
-- **Reset Format**: Restore default format (SimSun, 12pt, 1.5x line height)
+The extension automatically handles content formatting, including:
+- Text styles (bold, italic, headings)
+- Code blocks (with syntax highlighting)
+- Tables
+- Math formulas (converted to editable equations)
+- Lists and nested structures
 
 ## Tech Stack
 
