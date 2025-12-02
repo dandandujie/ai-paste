@@ -108,6 +108,15 @@ export class FloatingPanel {
           <div class="format-section">
             <div class="format-row">
               <div class="format-item">
+                <label>目标软件</label>
+                <select id="targetApp" class="format-select">
+                  <option value="word" selected>Word</option>
+                  <option value="wps">WPS</option>
+                </select>
+              </div>
+            </div>
+            <div class="format-row">
+              <div class="format-item">
                 <label>字体</label>
                 <select id="fontFamily" class="format-select">
                   <option value="微软雅黑, Arial, sans-serif" ${fontFamily.includes('微软雅黑') ? 'selected' : ''}>微软雅黑</option>
@@ -523,10 +532,22 @@ export class FloatingPanel {
 
     const previewArea = this.shadowRoot.querySelector('#previewArea') as HTMLElement;
     const lineHeight = (this.shadowRoot.querySelector('#lineHeight') as HTMLSelectElement)?.value;
+    const targetApp = (this.shadowRoot.querySelector('#targetApp') as HTMLSelectElement)?.value;
+    const fontFamily = (this.shadowRoot.querySelector('#fontFamily') as HTMLSelectElement)?.value;
+    const fontSize = (this.shadowRoot.querySelector('#fontSize') as HTMLSelectElement)?.value;
 
     try {
-      // 直接获取预览区的 HTML（包含用户的格式修改）
-      let finalHtml = previewArea.innerHTML;
+      let finalHtml: string;
+
+      if (targetApp === 'wps') {
+        // WPS 模式：使用预览区内容，将公式转换为纯文本
+        finalHtml = this.convertMathToSvgForWps(previewArea.innerHTML);
+      } else {
+        // Word 模式：重新生成包含 MathML 的内容
+        finalHtml = await convertMarkdown(this.currentContent, true);
+        // 应用用户设置的字体和字号
+        finalHtml = `<div style="font-family: ${fontFamily}; font-size: ${fontSize};">${finalHtml}</div>`;
+      }
 
       // 包装成完整的 HTML 结构，保留行距设置
       finalHtml = `<div style="line-height: ${lineHeight};">${finalHtml}</div>`;
@@ -538,7 +559,8 @@ export class FloatingPanel {
       } else {
         const clipboardItem = buildClipboardItem(finalHtml, plainText);
         await navigator.clipboard.write([clipboardItem]);
-        this.showToast('已复制到剪贴板', 'success');
+        const msg = targetApp === 'wps' ? '已复制（WPS 文本模式）' : '已复制到剪贴板';
+        this.showToast(msg, 'success');
       }
 
       this.hide();
@@ -546,6 +568,59 @@ export class FloatingPanel {
       console.error('[AI-Paste] Copy error:', error);
       this.showToast('复制失败', 'error');
     }
+  }
+
+  /**
+   * WPS 模式：清理 HTML 格式，移除 MathML 并简化结构
+   */
+  private convertMathToSvgForWps(html: string): string {
+    const container = document.createElement('div');
+    container.innerHTML = html;
+
+    // 查找所有 MathML 公式元素并替换为文本
+    const mathElements = container.querySelectorAll('math');
+    mathElements.forEach(mathEl => {
+      const textContent = mathEl.textContent || '';
+      const span = document.createElement('span');
+      span.style.cssText = 'font-style: italic; font-family: "Times New Roman", serif;';
+      span.textContent = textContent;
+      mathEl.replaceWith(span);
+    });
+
+    // 查找 KaTeX 渲染的公式
+    const katexElements = container.querySelectorAll('.katex, .katex-display');
+    katexElements.forEach(mathEl => {
+      const isBlock = mathEl.classList.contains('katex-display');
+      const textContent = mathEl.textContent || '';
+
+      if (isBlock) {
+        const div = document.createElement('div');
+        div.style.cssText = 'text-align: center; margin: 0.5em 0; font-style: italic; font-family: "Times New Roman", serif;';
+        div.textContent = textContent;
+        mathEl.replaceWith(div);
+      } else {
+        const span = document.createElement('span');
+        span.style.cssText = 'font-style: italic; font-family: "Times New Roman", serif;';
+        span.textContent = textContent;
+        mathEl.replaceWith(span);
+      }
+    });
+
+    // 移除空的 <p> 标签和多余的换行
+    const emptyPs = container.querySelectorAll('p:empty, p > br:only-child');
+    emptyPs.forEach(el => {
+      const parent = el.closest('p') || el;
+      parent.remove();
+    });
+
+    // 将连续的 <br> 合并为一个
+    let result = container.innerHTML;
+    result = result.replace(/(<br\s*\/?>\s*){2,}/gi, '<br>');
+
+    // 移除段落之间多余的空白
+    result = result.replace(/<\/p>\s*<p/gi, '</p><p');
+
+    return result;
   }
 
   private showToast(message: string, type: 'success' | 'error') {
