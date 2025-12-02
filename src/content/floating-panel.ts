@@ -30,7 +30,7 @@ export class FloatingPanel {
       return;
     }
 
-    this.createPanel();
+    await this.createPanel();
     this.updatePreview();
   }
 
@@ -62,7 +62,7 @@ export class FloatingPanel {
       return;
     }
 
-    this.createPanel();
+    await this.createPanel();
     this.updatePreview();
   }
 
@@ -82,7 +82,7 @@ export class FloatingPanel {
     }
   }
 
-  private createPanel() {
+  private async createPanel() {
     this.panel = document.createElement('div');
     this.panel.id = 'ai-paste-floating-panel';
     this.shadowRoot = this.panel.attachShadow({ mode: 'open' });
@@ -95,7 +95,8 @@ export class FloatingPanel {
     const katexFontsUrl = chrome.runtime.getURL('vendor/katex/fonts/');
     const katexStyleElement = document.createElement('style');
     katexStyleElement.id = 'katex-styles';
-    this.loadKatexCss(katexStyleElement, katexFontsUrl);
+    // 等待 KaTeX CSS 加载完成，避免 Windows 端因文件 I/O 较慢导致公式渲染失败
+    await this.loadKatexCss(katexStyleElement, katexFontsUrl);
 
     const styleElement = document.createElement('style');
     styleElement.textContent = this.getStyles();
