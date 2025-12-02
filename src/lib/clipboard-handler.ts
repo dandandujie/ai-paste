@@ -45,27 +45,22 @@ export async function writeToClipboard(
   html: string,
   plainText: string
 ): Promise<boolean> {
-  const clipboardItem = buildClipboardItem(html, plainText);
-
-  // 尝试主要方法
   try {
+    const clipboardItem = buildClipboardItem(html, plainText);
+
     await navigator.clipboard.write([clipboardItem]);
     return true;
   } catch (error) {
-    console.warn('[AI-Paste] Primary clipboard write failed:', error);
+    console.error('Clipboard write failed:', error);
+    return fallbackCopy(html);
   }
-
-  // Fallback: 使用 execCommand 复制 HTML（Windows 兼容性更好）
-  return fallbackCopy(html);
 }
 
 function fallbackCopy(html: string): boolean {
-  // 包装 HTML 为 Word 兼容格式
-  const wrappedHtml = wrapHtmlForFallback(html);
-
   const container = document.createElement('div');
-  container.innerHTML = wrappedHtml;
-  container.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0;';
+  container.innerHTML = html;
+  container.style.position = 'fixed';
+  container.style.left = '-9999px';
   document.body.appendChild(container);
 
   const selection = window.getSelection()!;
@@ -85,17 +80,6 @@ function fallbackCopy(html: string): boolean {
   document.body.removeChild(container);
 
   return success;
-}
-
-/**
- * 为 fallback 复制包装 HTML，确保 Word 兼容性
- */
-function wrapHtmlForFallback(html: string): string {
-  // 如果已经是完整文档，直接返回
-  if (html.trim().startsWith('<!DOCTYPE') || html.trim().startsWith('<html')) {
-    return html;
-  }
-  return html;
 }
 
 export async function shouldIntercept(): Promise<boolean> {
