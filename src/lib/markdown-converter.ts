@@ -97,114 +97,14 @@ function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, m => map[m]);
 }
 
-/**
- * 合并被拆分的公式行（AI 输出常见问题）
- * 例如 "C\n=\nS\n0\n·\nN\n(\nd\n1\n)" 合并为 "C = S0 · N(d1)"
- */
-function rejoinSplitMathLines(text: string): string {
-  const lines = text.split('\n');
-  if (lines.length < 2) return text;
-
-  const merged: string[] = [];
-  let buffer = '';
-  let inMathContext = false;
-
-  // 检测是否为数学符号/片段（单字符或短数学表达式）
-  const isMathFragment = (s: string) => {
-    const t = s.trim();
-    if (!t) return false;
-    // 单字符数学符号
-    if (t.length === 1 && /[a-zA-Z0-9=+\-*/^_()[\]{}·×÷±≤≥≠≈∑∏∫]/.test(t)) return true;
-    // 短数学片段（无中文，长度<30）
-    if (t.length < 30 && !/[\u4e00-\u9fff]/.test(t) && /^[a-zA-Z0-9=+\-*/^_()[\]{}·×÷±≤≥≠≈∑∏∫\s.]+$/.test(t)) return true;
-    return false;
-  };
-
-  // 检测是否为普通文本行（含中文或长句子）
-  const isTextLine = (s: string) => {
-    const t = s.trim();
-    if (!t) return false;
-    // 含中文
-    if (/[\u4e00-\u9fff]/.test(t)) return true;
-    // 长度>50且不像公式
-    if (t.length > 50 && !/[=+\-*/^_{}\\]/.test(t)) return true;
-    return false;
-  };
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const trimmed = line.trim();
-
-    // 空行：结束当前数学上下文
-    if (!trimmed) {
-      if (buffer) {
-        merged.push(buffer);
-        buffer = '';
-      }
-      merged.push(line);
-      inMathContext = false;
-      continue;
-    }
-
-    // 普通文本行：结束数学上下文，单独保留
-    if (isTextLine(trimmed)) {
-      if (buffer) {
-        merged.push(buffer);
-        buffer = '';
-      }
-      merged.push(line);
-      inMathContext = false;
-      continue;
-    }
-
-    // 数学片段：合并到 buffer
-    if (isMathFragment(trimmed)) {
-      if (!inMathContext && buffer) {
-        merged.push(buffer);
-        buffer = '';
-      }
-      inMathContext = true;
-      // 智能添加空格：数字紧跟字母、括号内容等不需要空格
-      if (buffer) {
-        const lastChar = buffer.trim().slice(-1);
-        const firstChar = trimmed[0];
-        // 不需要空格的情况：
-        // 1. 上一个是字母/下标，当前是数字（如 S0, d1）
-        // 2. 上一个是左括号，或当前是右括号
-        // 3. 上一个或当前是下标/上标符号
-        const isLetterThenDigit = /[a-zA-Z]$/.test(lastChar) && /^[0-9]/.test(firstChar);
-        const isBracketContext = /[(\[]$/.test(lastChar) || /^[)\]]/.test(firstChar);
-        const isSubscript = /[_^]$/.test(lastChar) || /^[_^]/.test(firstChar);
-        const needSpace = !isLetterThenDigit && !isBracketContext && !isSubscript;
-        buffer += (needSpace ? ' ' : '') + trimmed;
-      } else {
-        buffer = trimmed;
-      }
-      continue;
-    }
-
-    // 其他情况：保留原样
-    if (buffer) {
-      merged.push(buffer);
-      buffer = '';
-    }
-    merged.push(line);
-    inMathContext = false;
-  }
-
-  if (buffer) {
-    merged.push(buffer);
-  }
-
-  return merged.join('\n');
-}
+// rejoinSplitMathLines 函数已移除（会错误处理包含希腊字母的正常文本）
 
 export async function convertMarkdown(markdown: string, forClipboard: boolean = false): Promise<string> {
   // 预处理0：将 HTML 换行符归一化为普通换行，避免打散 LaTeX 环境匹配
   markdown = markdown.replace(/<br\s*\/?>/gi, '\n');
 
-  // 预处理1：合并被拆分的公式行（AI 输出常见问题）
-  markdown = rejoinSplitMathLines(markdown);
+  // 预处理1：合并被拆分的公式行（已禁用，避免误处理正常文本）
+  // markdown = rejoinSplitMathLines(markdown);
 
   // 预处理2：将常见的"裸公式行"包裹为 LaTeX，便于后续统一处理
   markdown = wrapLooseMathLines(markdown);
@@ -305,11 +205,24 @@ export async function convertMarkdown(markdown: string, forClipboard: boolean = 
  * 用于 popup 页面从 HTML 剪贴板生成 Word 兼容的内容
  */
 export function convertHtmlForClipboard(html: string): string {
+  // 先移除我们添加的注释标记，保留内部的公式 HTML
+  html = html
+    .replace(/<!--RENDERED_MATH_START-->/g, '')
+    .replace(/<!--RENDERED_MATH_END-->/g, '');
+
   const div = document.createElement('div');
   div.innerHTML = html;
 
   // 移除不需要的元素
   div.querySelectorAll('script, style, meta, link').forEach(el => el.remove());
+
+  // 移除我们添加的包装元素，保留内容
+  div.querySelectorAll('.ai-paste-math-wrapper').forEach(wrapper => {
+    while (wrapper.firstChild) {
+      wrapper.parentNode?.insertBefore(wrapper.firstChild, wrapper);
+    }
+    wrapper.remove();
+  });
 
   // 查找顶层公式容器（避免重复处理嵌套元素）
   // 优先处理带有 display 类的块级公式
@@ -388,9 +301,14 @@ function convertPreservedMath(mathHtml: string, forClipboard: boolean): string {
     return `<span class="preserved-math">${mathHtml}</span>`;
   }
 
-  const { latex, displayMode } = extractLatexFromMathHtml(mathHtml);
+  const { latex, displayMode, mathml: existingMathml } = extractLatexFromMathHtml(mathHtml);
 
   try {
+    // 优先使用已有的 MathML（如 KaTeX 生成的）
+    if (existingMathml) {
+      return existingMathml;
+    }
+
     if (latex) {
       const { mathml } = renderLatex(latex, displayMode);
       return mathml;
@@ -415,7 +333,7 @@ function convertPreservedMath(mathHtml: string, forClipboard: boolean): string {
 /**
  * 从已渲染的公式 HTML 中尽可能提取原始 LaTeX 内容
  */
-function extractLatexFromMathHtml(mathHtml: string): { latex: string | null; displayMode: boolean } {
+function extractLatexFromMathHtml(mathHtml: string): { latex: string | null; displayMode: boolean; mathml: string | null } {
   const displayMode = /katex-display|MathJax_Display|mjx-container[^>]+display=("|')?(true|block)/i.test(mathHtml);
 
   // 有 DOM 时优先用 DOM 提取，兼容 service worker 环境则回退字符串正则
@@ -423,81 +341,95 @@ function extractLatexFromMathHtml(mathHtml: string): { latex: string | null; dis
     const container = document.createElement('div');
     container.innerHTML = mathHtml;
 
+    // 优先检查 KaTeX 的 katex-mathml 中是否已有 MathML
+    const katexMathml = container.querySelector('.katex-mathml math');
+    if (katexMathml) {
+      // 直接使用 KaTeX 生成的 MathML
+      return { latex: null, displayMode, mathml: katexMathml.outerHTML };
+    }
+
     // KaTeX / MathJax 常见的 LaTeX 存储点
     const annotation = container.querySelector('annotation[encoding*="tex"]');
     if (annotation?.textContent?.trim()) {
-      return { latex: annotation.textContent.trim(), displayMode };
+      return { latex: annotation.textContent.trim(), displayMode, mathml: null };
     }
 
     const dataTex = (container.querySelector('[data-tex]') as HTMLElement | null)?.getAttribute('data-tex');
     if (dataTex && dataTex.trim()) {
-      return { latex: dataTex.trim(), displayMode };
+      return { latex: dataTex.trim(), displayMode, mathml: null };
     }
 
     const scriptTex = container.querySelector('script[type="math/tex"], script[type="math/tex; mode=display"]');
     if (scriptTex?.textContent?.trim()) {
       const type = scriptTex.getAttribute('type') || '';
       const isDisplay = type.includes('display');
-      return { latex: scriptTex.textContent.trim(), displayMode: displayMode || isDisplay };
+      return { latex: scriptTex.textContent.trim(), displayMode: displayMode || isDisplay, mathml: null };
     }
 
     // MathJax SVG 输出常见的隐藏 MathML
     const mjxAnnotation = container.querySelector('mjx-assistive-mml annotation[encoding*="tex"]');
     if (mjxAnnotation?.textContent?.trim()) {
-      return { latex: mjxAnnotation.textContent.trim(), displayMode };
+      return { latex: mjxAnnotation.textContent.trim(), displayMode, mathml: null };
     }
 
     const mathAnnotation = container.querySelector('math annotation[encoding*="tex"]');
     if (mathAnnotation?.textContent?.trim()) {
-      return { latex: mathAnnotation.textContent.trim(), displayMode };
+      return { latex: mathAnnotation.textContent.trim(), displayMode, mathml: null };
     }
 
     // 可访问性属性
     const ariaLabel = container.querySelector('[aria-label]')?.getAttribute('aria-label');
     if (ariaLabel?.trim()) {
-      return { latex: ariaLabel.trim(), displayMode };
+      return { latex: ariaLabel.trim(), displayMode, mathml: null };
     }
 
     const altText = (container.querySelector('[alttext]') as HTMLElement | null)?.getAttribute('alttext');
     if (altText?.trim()) {
-      return { latex: altText.trim(), displayMode };
+      return { latex: altText.trim(), displayMode, mathml: null };
     }
 
-    return { latex: null, displayMode };
+    return { latex: null, displayMode, mathml: null };
+  }
+
+  // 正则回退（用于 service worker 环境）
+  // 先尝试提取 KaTeX 的 MathML
+  const katexMathmlMatch = mathHtml.match(/<span[^>]*class="katex-mathml"[^>]*>[\s\S]*?(<math[^>]*>[\s\S]*?<\/math>)/i);
+  if (katexMathmlMatch?.[1]) {
+    return { latex: null, displayMode, mathml: katexMathmlMatch[1] };
   }
 
   const annotationMatch = mathHtml.match(/<annotation[^>]*encoding=["'][^"']*tex[^"']*["'][^>]*>([\s\S]*?)<\/annotation>/i);
   if (annotationMatch?.[1]?.trim()) {
-    return { latex: annotationMatch[1].trim(), displayMode };
+    return { latex: annotationMatch[1].trim(), displayMode, mathml: null };
   }
 
   const dataTexMatch = mathHtml.match(/data-tex=["']([^"']+)["']/i);
   if (dataTexMatch?.[1]) {
-    return { latex: dataTexMatch[1].trim(), displayMode };
+    return { latex: dataTexMatch[1].trim(), displayMode, mathml: null };
   }
 
   const scriptMatch = mathHtml.match(/<script[^>]*type=["']math\/tex[^"']*["'][^>]*>([\s\S]*?)<\/script>/i);
   if (scriptMatch?.[1]) {
     const isDisplay = /math\/tex[^"']*display/i.test(scriptMatch[0]);
-    return { latex: scriptMatch[1].trim(), displayMode: displayMode || isDisplay };
+    return { latex: scriptMatch[1].trim(), displayMode: displayMode || isDisplay, mathml: null };
   }
 
   const ariaMatch = mathHtml.match(/aria-label=["']([^"']+)["']/i);
   if (ariaMatch?.[1]) {
-    return { latex: ariaMatch[1].trim(), displayMode };
+    return { latex: ariaMatch[1].trim(), displayMode, mathml: null };
   }
 
   const altTextMatch = mathHtml.match(/alttext=["']([^"']+)["']/i);
   if (altTextMatch?.[1]) {
-    return { latex: altTextMatch[1].trim(), displayMode };
+    return { latex: altTextMatch[1].trim(), displayMode, mathml: null };
   }
 
   const dataLatexMatch = mathHtml.match(/data-latex=["']([^"']+)["']/i);
   if (dataLatexMatch?.[1]) {
-    return { latex: dataLatexMatch[1].trim(), displayMode };
+    return { latex: dataLatexMatch[1].trim(), displayMode, mathml: null };
   }
 
-  return { latex: null, displayMode };
+  return { latex: null, displayMode, mathml: null };
 }
 
 /**

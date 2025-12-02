@@ -16,6 +16,7 @@ export class FloatingPanel {
   private hasSelection: boolean = false;
   private markedRanges: { start: Node; startOffset: number; end: Node; endOffset: number }[] = [];
   private savedRange: Range | null = null;
+  private resizeCleanup: (() => void) | null = null;
 
   async show(content: string, onCopy: (html: string, text: string) => void) {
     this.currentContent = content;
@@ -23,6 +24,7 @@ export class FloatingPanel {
     this.currentPreset = await getCurrentPreset();
 
     if (this.panel) {
+      this.resetPreviewArea();
       this.updatePreview();
       this.panel.style.display = 'block';
       return;
@@ -44,15 +46,17 @@ export class FloatingPanel {
     this.currentPreset = await getCurrentPreset();
 
     try {
-      const text = await navigator.clipboard.readText();
-      if (text && text.trim()) {
-        this.currentContent = text;
+      // 优先尝试读取 HTML 格式
+      const content = await this.readClipboardContent();
+      if (content && content.trim()) {
+        this.currentContent = content;
       }
     } catch {
       this.currentContent = '';
     }
 
     if (this.panel) {
+      this.resetPreviewArea();
       this.updatePreview();
       this.panel.style.display = 'block';
       return;
@@ -69,6 +73,8 @@ export class FloatingPanel {
   }
 
   destroy() {
+    this.resizeCleanup?.();
+    this.resizeCleanup = null;
     if (this.panel) {
       this.panel.remove();
       this.panel = null;
@@ -207,17 +213,8 @@ export class FloatingPanel {
       if (fontSize) fontSize.value = '12pt';
       if (lineHeight) lineHeight.value = '1.5';
 
-      this.markedRanges = [];
-      this.savedRange = null;
-      this.hasSelection = false;
-      this.updateMarkCount();
+      this.resetPreviewArea();
       this.updatePreview();
-
-      // 隐藏工具栏
-      const selectionToolbar = this.shadowRoot?.querySelector('#selectionToolbar') as HTMLElement;
-      const formatHint = this.shadowRoot?.querySelector('#formatHint') as HTMLElement;
-      selectionToolbar?.classList.remove('show');
-      formatHint?.classList.remove('hide');
 
       this.showToast('已重置为默认格式', 'success');
     });
@@ -236,8 +233,9 @@ export class FloatingPanel {
     });
 
     // 监听预览区的选择变化
-    previewArea?.addEventListener('mouseup', () => this.checkSelection());
-    previewArea?.addEventListener('keyup', () => this.checkSelection());
+    if (previewArea) {
+      this.bindPreviewEvents(previewArea);
+    }
 
     // 标记和应用按钮
     markSelection?.addEventListener('click', () => this.markCurrentSelection());
@@ -248,6 +246,51 @@ export class FloatingPanel {
 
     // 调整大小
     this.setupResize(resizeHandle);
+  }
+
+  /**
+   * 绑定预览区事件监听器
+   */
+  private bindPreviewEvents(previewArea: HTMLElement) {
+    previewArea.addEventListener('mouseup', () => this.checkSelection());
+    previewArea.addEventListener('keyup', () => this.checkSelection());
+  }
+
+  /**
+   * 重置预览区元素，清除 contenteditable 的内部状态
+   * 解决 KaTeX 公式在第二次复制时被碎片化的问题
+   */
+  private resetPreviewArea() {
+    if (!this.shadowRoot) return;
+
+    const oldPreview = this.shadowRoot.querySelector('#previewArea') as HTMLElement | null;
+    if (!oldPreview) return;
+
+    // 浅克隆元素（保留 id, class, contenteditable 属性，丢弃内部编辑状态）
+    const newPreview = oldPreview.cloneNode(false) as HTMLElement;
+
+    // 重新绑定事件监听器（cloneNode 不复制事件）
+    this.bindPreviewEvents(newPreview);
+
+    // 清除类内部状态
+    this.markedRanges = [];
+    this.savedRange = null;
+    this.hasSelection = false;
+
+    // 清除浏览器选区状态
+    const root = this.shadowRoot as ShadowRoot & { getSelection?: () => Selection | null };
+    const selection = root.getSelection ? root.getSelection() : document.getSelection();
+    selection?.removeAllRanges();
+
+    // 替换元素
+    oldPreview.replaceWith(newPreview);
+
+    // 重置 UI 状态
+    this.updateMarkCount();
+    const selectionToolbar = this.shadowRoot.querySelector('#selectionToolbar') as HTMLElement;
+    const formatHint = this.shadowRoot.querySelector('#formatHint') as HTMLElement;
+    selectionToolbar?.classList.remove('show');
+    formatHint?.classList.remove('hide');
   }
 
   private setupResize(handle: HTMLElement) {
@@ -271,7 +314,7 @@ export class FloatingPanel {
       e.preventDefault();
     });
 
-    document.addEventListener('mousemove', (e: MouseEvent) => {
+    const onMouseMove = (e: MouseEvent) => {
       if (!isResizing) return;
 
       const newWidth = startWidth - (e.clientX - startX);
@@ -283,11 +326,19 @@ export class FloatingPanel {
       if (newHeight >= 300 && newHeight <= 800) {
         panelContainer.style.maxHeight = newHeight + 'px';
       }
-    });
+    };
 
-    document.addEventListener('mouseup', () => {
+    const onMouseUp = () => {
       isResizing = false;
-    });
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+
+    this.resizeCleanup = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
   }
 
   private checkSelection() {
@@ -495,6 +546,80 @@ export class FloatingPanel {
     }
   }
 
+  /**
+   * 读取剪贴板内容，优先尝试 HTML 格式
+   */
+  private async readClipboardContent(): Promise<string> {
+    try {
+      // 尝试使用 Clipboard API 读取 HTML
+      const clipboardItems = await navigator.clipboard.read();
+      for (const item of clipboardItems) {
+        if (item.types.includes('text/html')) {
+          const blob = await item.getType('text/html');
+          const html = await blob.text();
+          // 检查 HTML 是否包含数学公式
+          if (html && this.containsMathElements(html)) {
+            return this.wrapMathInHtml(html);
+          }
+        }
+      }
+    } catch {
+      // Clipboard API 不支持或权限不足
+    }
+    // 回退到纯文本
+    return navigator.clipboard.readText();
+  }
+
+  /**
+   * 检测 HTML 是否包含数学公式元素
+   */
+  private containsMathElements(html: string): boolean {
+    // 支持双引号和单引号属性，以及各种数学公式标记
+    return /class=["']?katex|class=["']?MathJax|<mjx-container|<math[\s>]|data-latex=|<!--RENDERED_MATH_START-->/i.test(html);
+  }
+
+  /**
+   * 在 HTML 字符串中包裹已渲染的数学公式
+   */
+  private wrapMathInHtml(html: string): string {
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = html;
+
+    const mathSelectors = [
+      '.katex-display',
+      '.katex:not(.katex-display .katex)',
+      '.MathJax_Display',
+      '.MathJax:not(.MathJax_Display .MathJax)',
+      'mjx-container',
+      'math'
+    ];
+
+    mathSelectors.forEach(selector => {
+      tempDiv.querySelectorAll(selector).forEach(mathEl => {
+        if (mathEl.parentElement?.classList.contains('ai-paste-math-wrapper')) return;
+        const wrapper = document.createElement('span');
+        wrapper.className = 'ai-paste-math-wrapper';
+        const mathHtml = mathEl.outerHTML;
+        wrapper.innerHTML = `<!--RENDERED_MATH_START-->${mathHtml}<!--RENDERED_MATH_END-->`;
+        mathEl.replaceWith(wrapper);
+      });
+    });
+
+    return tempDiv.innerHTML;
+  }
+
+  /**
+   * 检测内容是否为 HTML（包含已渲染的数学公式）
+   */
+  private isHtmlContent(content: string): boolean {
+    // 检查是否包含 HTML 标签
+    if (!/<[a-z][\s\S]*>/i.test(content)) {
+      return false;
+    }
+    // 检查是否包含已渲染的数学公式标记或 KaTeX/MathJax 元素
+    return this.containsMathElements(content);
+  }
+
   private async updatePreview() {
     if (!this.shadowRoot || !this.currentPreset) return;
 
@@ -506,7 +631,18 @@ export class FloatingPanel {
     if (!previewArea) return;
 
     try {
-      const previewHtml = await convertMarkdown(this.currentContent, false);
+      let previewHtml: string;
+
+      if (this.isHtmlContent(this.currentContent)) {
+        // 内容已经是 HTML（包含已渲染的公式），直接使用
+        // 移除注释标记，保留公式 HTML
+        previewHtml = this.currentContent
+          .replace(/<!--RENDERED_MATH_START-->/g, '')
+          .replace(/<!--RENDERED_MATH_END-->/g, '');
+      } else {
+        // 内容是 Markdown，需要转换
+        previewHtml = await convertMarkdown(this.currentContent, false);
+      }
 
       previewArea.innerHTML = previewHtml;
       previewArea.style.fontFamily = fontFamily;
@@ -522,14 +658,24 @@ export class FloatingPanel {
     if (!this.shadowRoot || !this.currentPreset) return;
 
     const previewArea = this.shadowRoot.querySelector('#previewArea') as HTMLElement;
+    const fontFamily = (this.shadowRoot.querySelector('#fontFamily') as HTMLSelectElement)?.value;
+    const fontSize = (this.shadowRoot.querySelector('#fontSize') as HTMLSelectElement)?.value;
     const lineHeight = (this.shadowRoot.querySelector('#lineHeight') as HTMLSelectElement)?.value;
 
     try {
-      // 直接获取预览区的 HTML（包含用户的格式修改）
-      let finalHtml = previewArea.innerHTML;
+      let finalHtml: string;
 
-      // 包装成完整的 HTML 结构，保留行距设置
-      finalHtml = `<div style="line-height: ${lineHeight};">${finalHtml}</div>`;
+      if (this.isHtmlContent(this.currentContent)) {
+        // 内容是 HTML（包含已渲染的公式），使用 convertHtmlForClipboard 转换
+        const { convertHtmlForClipboard } = await import('@/lib/markdown-converter');
+        finalHtml = convertHtmlForClipboard(this.currentContent);
+      } else {
+        // 内容是 Markdown，使用 convertMarkdown 转换
+        finalHtml = await convertMarkdown(this.currentContent, true);
+      }
+
+      // 应用用户选择的格式
+      finalHtml = `<div style="font-family: ${fontFamily}; font-size: ${fontSize}; line-height: ${lineHeight};">${finalHtml}</div>`;
 
       const plainText = previewArea.innerText || this.currentContent;
 

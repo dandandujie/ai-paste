@@ -30,7 +30,12 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 });
 
 chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) => {
-  handleMessage(message).then(sendResponse);
+  handleMessage(message)
+    .then(sendResponse)
+    .catch((err) => {
+      console.error('[AI-Paste] handleMessage failed:', err);
+      sendResponse({ error: err?.message ?? 'Unknown error' });
+    });
   return true;
 });
 
@@ -73,7 +78,7 @@ async function convertContent(request: ConvertRequest) {
   return {
     html: styledHtml,
     plainText,
-    hasFormula: request.content.includes('$') || request.content.includes('\\(')
+    hasFormula: request.content.includes('$') || request.content.includes('\\(') || request.content.includes('\\[')
   };
 }
 

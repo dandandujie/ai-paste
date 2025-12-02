@@ -82,11 +82,17 @@ export class ClipboardMonitor {
   };
 
   private handleCopy = (event: ClipboardEvent) => {
-    const copied = event.clipboardData?.getData('text/plain');
+    // 只记录剪贴板内容，不触发浮窗显示
+    // 浮窗显示由 ClipboardInterceptor 负责处理手动复制
+    // ClipboardMonitor 只负责监控外部剪贴板变化（如点击复制按钮后的轮询检测）
+    let copied = event.clipboardData?.getData('text/html');
+    if (!copied || !copied.trim()) {
+      copied = event.clipboardData?.getData('text/plain');
+    }
     if (copied && copied.trim()) {
       this.lastClipboardText = copied;
       this.saveLastClipboard(copied);
-      this.onNewContent(copied);
+      // 不再调用 onNewContent，避免与 ClipboardInterceptor 冲突
     }
   };
 
@@ -119,15 +125,72 @@ export class ClipboardMonitor {
   private async checkClipboard() {
     if (!this.initialized) return;
     try {
-      const text = await navigator.clipboard.readText();
-      if (text && text.trim() && text !== this.lastClipboardText) {
-        this.lastClipboardText = text;
-        this.saveLastClipboard(text);
-        this.onNewContent(text);
+      // 优先尝试读取 HTML 格式
+      const content = await this.readClipboardContent();
+      if (content && content.trim() && content !== this.lastClipboardText) {
+        this.lastClipboardText = content;
+        this.saveLastClipboard(content);
+        this.onNewContent(content);
       }
     } catch {
-      // 权限错误或用户手势要求，暂停轮询直到下次 focus
+      // 权限错误或用户手势要求，暂停轮询
       this.stopPolling();
+      // 如果仍在运行状态，延迟后尝试恢复监控
+      if (this.isRunning) {
+        setTimeout(() => this.refreshMonitoring(), this.pollInterval);
+      }
     }
+  }
+
+  /**
+   * 读取剪贴板内容，优先尝试 HTML 格式
+   */
+  private async readClipboardContent(): Promise<string> {
+    try {
+      const clipboardItems = await navigator.clipboard.read();
+      for (const item of clipboardItems) {
+        if (item.types.includes('text/html')) {
+          const blob = await item.getType('text/html');
+          const html = await blob.text();
+          // 检查是否包含数学公式
+          if (html && /class=["']?katex|class=["']?MathJax|<mjx-container|<math[\s>]/i.test(html)) {
+            return this.wrapMathInHtml(html);
+          }
+        }
+      }
+    } catch {
+      // Clipboard API 不支持或权限不足
+    }
+    // 回退到纯文本
+    return navigator.clipboard.readText();
+  }
+
+  /**
+   * 在 HTML 中包裹数学公式
+   */
+  private wrapMathInHtml(html: string): string {
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = html;
+
+    const mathSelectors = [
+      '.katex-display',
+      '.katex:not(.katex-display .katex)',
+      '.MathJax_Display',
+      '.MathJax:not(.MathJax_Display .MathJax)',
+      'mjx-container',
+      'math'
+    ];
+
+    mathSelectors.forEach(selector => {
+      tempDiv.querySelectorAll(selector).forEach(mathEl => {
+        if (mathEl.parentElement?.classList.contains('ai-paste-math-wrapper')) return;
+        const wrapper = document.createElement('span');
+        wrapper.className = 'ai-paste-math-wrapper';
+        wrapper.innerHTML = `<!--RENDERED_MATH_START-->${mathEl.outerHTML}<!--RENDERED_MATH_END-->`;
+        mathEl.replaceWith(wrapper);
+      });
+    });
+
+    return tempDiv.innerHTML;
   }
 }

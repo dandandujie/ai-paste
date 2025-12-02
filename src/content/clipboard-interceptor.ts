@@ -103,6 +103,50 @@ export class ClipboardInterceptor {
     });
   }
 
+  /**
+   * 读取剪贴板内容，优先尝试 HTML 格式
+   */
+  private async readClipboardContent(): Promise<string> {
+    try {
+      // 尝试使用 Clipboard API 读取 HTML
+      const clipboardItems = await navigator.clipboard.read();
+      for (const item of clipboardItems) {
+        // 优先读取 HTML 格式
+        if (item.types.includes('text/html')) {
+          const blob = await item.getType('text/html');
+          const html = await blob.text();
+          // 检查 HTML 是否包含数学公式（支持单引号和双引号）
+          if (html && this.containsMathElements(html)) {
+            // 包裹已渲染的公式
+            return this.wrapMathInHtml(html);
+          }
+        }
+      }
+    } catch {
+      // Clipboard API 不支持或权限不足，回退到 readText
+    }
+
+    // 回退到纯文本
+    return navigator.clipboard.readText();
+  }
+
+  /**
+   * 检测 HTML 是否包含数学公式元素
+   */
+  private containsMathElements(html: string): boolean {
+    return /class=["']?katex|class=["']?MathJax|<mjx-container|<math[\s>]|data-latex=|<!--RENDERED_MATH_START-->/i.test(html);
+  }
+
+  /**
+   * 在 HTML 字符串中包裹已渲染的数学公式
+   */
+  private wrapMathInHtml(html: string): string {
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = html;
+    this.wrapRenderedMath(tempDiv);
+    return tempDiv.innerHTML;
+  }
+
   // 监控剪贴板变化（检测网页复制按钮）
   private setupClipboardMonitor() {
     const checkClipboard = async (forceShow: boolean = false) => {
@@ -110,12 +154,14 @@ export class ClipboardInterceptor {
         const settings = await getSettings();
         if (!settings.enabled || !settings.showFloatingPanel) return;
 
-        const text = await navigator.clipboard.readText();
+        // 尝试读取 HTML 格式，如果失败则回退到纯文本
+        let content = await this.readClipboardContent();
+
         // forceShow 时即使内容相同也显示浮窗
-        if (text && text.trim().length > 0 && (forceShow || text !== this.lastClipboardContent)) {
+        if (content && content.trim().length > 0 && (forceShow || content !== this.lastClipboardContent)) {
           console.log('[AI-Paste] Clipboard change detected via monitor');
-          this.lastClipboardContent = text;
-          this.showFloatingPanel(text, settings.showNotification);
+          this.lastClipboardContent = content;
+          this.showFloatingPanel(content, settings.showNotification);
         }
       } catch {
         // 剪贴板读取失败，忽略
@@ -229,7 +275,12 @@ export class ClipboardInterceptor {
   private setupMessageListener() {
     chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (message.type === 'MANUAL_CONVERT') {
-        this.handleManualConvert().then(sendResponse);
+        this.handleManualConvert()
+          .then(sendResponse)
+          .catch((err) => {
+            console.error('[AI-Paste] Manual convert failed:', err);
+            sendResponse({ success: false, error: err?.message ?? 'Manual convert failed' });
+          });
         return true;
       }
     });
@@ -280,9 +331,27 @@ export class ClipboardInterceptor {
     const tempDiv = document.createElement('div');
     tempDiv.appendChild(fragment);
 
-    // 如果只有纯文本
+    const htmlContent = tempDiv.innerHTML;
+    console.log('[AI-Paste] extractSelectedContent HTML:', htmlContent.substring(0, 500));
+
+    // 如果只有纯文本（没有子元素）
     if (tempDiv.children.length === 0 && tempDiv.textContent) {
       return tempDiv.textContent;
+    }
+
+    // 检查是否包含已渲染的数学公式（KaTeX/MathJax）
+    // 使用多种方式检测：DOM 查询 + HTML 字符串匹配
+    const hasMathElements = tempDiv.querySelector('.katex, .MathJax, mjx-container, .math-container, math');
+    const hasMathInHtml = this.containsMathElements(htmlContent);
+
+    console.log('[AI-Paste] hasMathElements:', !!hasMathElements, 'hasMathInHtml:', hasMathInHtml);
+
+    if (hasMathElements || hasMathInHtml) {
+      // 保留 HTML 结构，用特殊标记包裹已渲染的公式
+      this.wrapRenderedMath(tempDiv);
+      const result = tempDiv.innerHTML;
+      console.log('[AI-Paste] Returning HTML with math:', result.substring(0, 300));
+      return result;
     }
 
     // 如果有 adapter，使用 adapter 提取
@@ -291,7 +360,39 @@ export class ClipboardInterceptor {
       if (extracted) return extracted;
     }
 
-    // 通用提取：直接返回文本内容
+    // 通用提取：如果有复杂 HTML 结构，返回 innerHTML
+    if (tempDiv.querySelector('p, div, span, pre, code, table, ul, ol')) {
+      return tempDiv.innerHTML;
+    }
+
+    // 否则返回纯文本
     return tempDiv.textContent || tempDiv.innerText || null;
+  }
+
+  /**
+   * 用特殊注释标记包裹已渲染的数学公式，便于后续处理
+   */
+  private wrapRenderedMath(container: HTMLElement) {
+    const mathSelectors = [
+      '.katex-display',
+      '.katex:not(.katex-display .katex)',
+      '.MathJax_Display',
+      '.MathJax:not(.MathJax_Display .MathJax)',
+      'mjx-container'
+    ];
+
+    mathSelectors.forEach(selector => {
+      container.querySelectorAll(selector).forEach(mathEl => {
+        // 避免重复包裹
+        if (mathEl.parentElement?.classList.contains('ai-paste-math-wrapper')) return;
+
+        const wrapper = document.createElement('span');
+        wrapper.className = 'ai-paste-math-wrapper';
+        // 使用注释标记，便于 markdown-converter 识别
+        const mathHtml = mathEl.outerHTML;
+        wrapper.innerHTML = `<!--RENDERED_MATH_START-->${mathHtml}<!--RENDERED_MATH_END-->`;
+        mathEl.replaceWith(wrapper);
+      });
+    });
   }
 }
